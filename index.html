@@ -220,39 +220,27 @@ function exportExcel() {
 
 // 지오코딩
 async function geocodeOne(addr) {
-  const key = localStorage.getItem('kakaoKey');
-  if (!key) throw new Error('VWorld API 키가 없습니다.');
-  
-  // 시/도명이 없으면 "서울" 자동 추가
   let query = addr.trim();
+  // 시/도명이 없으면 "서울특별시" 자동 추가
   if (!/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)/.test(query)) {
-    query = '서울 ' + query;
+    query = '서울특별시 ' + query;
   }
+  // 괄호 안 내용 제거, 호수/층수 제거
+  query = query.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+\d+호$/, '').replace(/\s+\d+층$/, '').replace(/\s+/g, ' ').trim();
   
-  const base = 'https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&format=json&key=' + key + '&address=' + encodeURIComponent(query);
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=kr&q=' + encodeURIComponent(query);
+  const res = await fetch(url, { headers: { 'Accept-Language': 'ko' } });
+  if (!res.ok) throw new Error('요청 실패: ' + res.status);
+  const j = await res.json();
   
-  // 1차: 도로명주소로 시도
-  let res = await fetch(base + '&type=road');
-  let j = await res.json();
-  
-  // 2차: 실패 시 지번주소로 재시도
-  if (j.response && j.response.status !== 'OK') {
-    res = await fetch(base + '&type=parcel');
-    j = await res.json();
-  }
-  
-  if (j.response && j.response.status === 'OK') {
-    const p = j.response.result.point;
-    return { lat: parseFloat(p.y), lng: parseFloat(p.x) };
+  if (j && j.length > 0) {
+    return { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) };
   }
   return null;
 }
 
 
-
 async function geocodeAll() {
-  const key = localStorage.getItem('kakaoKey');
-  if (!key) { alert('먼저 ⚙️ 에서 vworld api 키를 입력해주세요.'); return; }
   const targets = data.filter(d => d.addr && (!d.lat || !d.lng));
   if (!targets.length) { alert('변환할 주소가 없습니다. (모두 이미 좌표 있음)'); return; }
   if (!confirm(`${targets.length}개 주소를 좌표로 변환합니다. 계속?`)) return;
@@ -266,7 +254,7 @@ async function geocodeAll() {
     done++;
     prog.textContent = `좌표 변환 중... ${done}/${targets.length} (실패 ${fail})`;
     if (done % 5 === 0) save();
-    await new Promise(r => setTimeout(r, 100)); // API 부하 방지
+    await new Promise(r => setTimeout(r, 1100)); // API 부하 방지
   }
   save();
   prog.textContent = `완료: ${done-fail}건 성공, ${fail}건 실패`;
