@@ -218,19 +218,36 @@ function exportExcel() {
   XLSX.writeFile(wb, `영업현황_${today()}.xlsx`);
 }
 
-// 카카오 지오코딩
+// 지오코딩
 async function geocodeOne(addr) {
   const key = localStorage.getItem('kakaoKey');
-  if (!key) throw new Error('카카오 API 키가 없습니다.');
-  const url = 'https://dapi.kakao.com/v2/local/search/address.json?query=' + encodeURIComponent(addr);
-  const res = await fetch(url, { headers: { 'Authorization': 'KakaoAK ' + key } });
-  if (!res.ok) throw new Error('요청 실패: ' + res.status);
-  const j = await res.json();
-  if (j.documents && j.documents.length) {
-    return { lat: parseFloat(j.documents[0].y), lng: parseFloat(j.documents[0].x) };
+  if (!key) throw new Error('VWorld API 키가 없습니다.');
+  
+  // 시/도명이 없으면 "서울" 자동 추가
+  let query = addr.trim();
+  if (!/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)/.test(query)) {
+    query = '서울 ' + query;
+  }
+  
+  const base = 'https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&format=json&key=' + key + '&address=' + encodeURIComponent(query);
+  
+  // 1차: 도로명주소로 시도
+  let res = await fetch(base + '&type=road');
+  let j = await res.json();
+  
+  // 2차: 실패 시 지번주소로 재시도
+  if (j.response && j.response.status !== 'OK') {
+    res = await fetch(base + '&type=parcel');
+    j = await res.json();
+  }
+  
+  if (j.response && j.response.status === 'OK') {
+    const p = j.response.result.point;
+    return { lat: parseFloat(p.y), lng: parseFloat(p.x) };
   }
   return null;
 }
+
 
 async function geocodeAll() {
   const key = localStorage.getItem('kakaoKey');
