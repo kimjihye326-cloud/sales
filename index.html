@@ -249,9 +249,10 @@ async function geocodeOne(addr) {
 }
 
 
+
 async function geocodeAll() {
   const key = localStorage.getItem('kakaoKey');
-  if (!key) { alert('먼저 ⚙️ 에서 카카오 REST API 키를 입력해주세요.'); return; }
+  if (!key) { alert('먼저 ⚙️ 에서 vworld api 키를 입력해주세요.'); return; }
   const targets = data.filter(d => d.addr && (!d.lat || !d.lng));
   if (!targets.length) { alert('변환할 주소가 없습니다. (모두 이미 좌표 있음)'); return; }
   if (!confirm(`${targets.length}개 주소를 좌표로 변환합니다. 계속?`)) return;
