@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>영업 관리</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, sans-serif; margin: 0; padding: 12px; background: #f4f5f7; }
@@ -18,9 +16,6 @@
   .filters, .sort-row { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
   .filters button, .sort-row button { flex: 1; padding: 8px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 6px; }
   .filters button.active, .sort-row button.active { background: #2b7cff; color: #fff; border-color: #2b7cff; }
-  .view-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
-  .view-toggle button { flex: 1; padding: 10px; font-size: 14px; border: 1px solid #ccc; background: #fff; border-radius: 6px; font-weight: 600; }
-  .view-toggle button.active { background: #0f172a; color: #fff; border-color: #0f172a; }
   .card { background: #fff; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   .card-head { cursor: pointer; }
   .name-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -31,7 +26,6 @@
   .badge.on-sales { background: #bfdbfe; color: #1e40af; }
   .badge.on-done { background: #86efac; color: #14532d; }
   .info { font-size: 12px; color: #555; margin-top: 3px; word-break: break-all; }
-  .dist { font-size: 11px; color: #2b7cff; margin-top: 2px; }
   .expand { display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; }
   .card.open .expand { display: block; }
   .memo-box { width: 100%; padding: 8px; font-size: 13px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 6px; resize: vertical; min-height: 40px; font-family: inherit; }
@@ -45,36 +39,16 @@
   .status-item input[type=date] { flex: 1; padding: 3px 5px; font-size: 11px; border: 1px solid #ddd; border-radius: 4px; }
   .card.done .card-head { opacity: 0.55; }
   .util-btn { padding: 6px 10px; font-size: 12px; border: none; border-radius: 6px; color: #fff; }
-  #map { width: 100%; height: 65vh; border-radius: 10px; margin-bottom: 10px; display: none; }
-  #map.active { display: block; }
-  .setup { background: #fff8e1; border: 1px solid #ffe082; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 12px; }
-  .setup input { width: 100%; padding: 6px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
-  .geo-progress { font-size: 11px; color: #666; margin-top: 4px; }
 </style>
 </head>
 <body>
 
 <h1>📇 영업 관리</h1>
 
-<div class="setup" id="setupBox">
-  <b>⚙️ 카카오 REST API 키</b> (최초 1회 입력, 브라우저에 저장됨)
-  <input type="text" id="kakaoKey" placeholder="카카오 REST API 키 입력">
-  <div style="margin-top:6px;display:flex;gap:6px;">
-    <button class="util-btn" style="background:#2b7cff;" onclick="saveKey()">저장</button>
-    <button class="util-btn" style="background:#64748b;" onclick="document.getElementById('setupBox').style.display='none'">닫기</button>
-  </div>
-</div>
-
 <div class="top">
   <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
   <button class="util-btn" style="background:#10b981;" onclick="exportExcel()">📥 저장</button>
-  <button class="util-btn" style="background:#8b5cf6;" onclick="geocodeAll()">📍 좌표변환</button>
-  <button class="util-btn" style="background:#64748b;" onclick="document.getElementById('setupBox').style.display='block'">⚙️</button>
-</div>
-
-<div class="view-toggle">
-  <button id="btnList" class="active" onclick="setView('list')">📋 목록</button>
-  <button id="btnMap" onclick="setView('map')">🗺️ 지도</button>
+  <button class="util-btn" style="background:#ef4444;" onclick="resetChecks()">초기화</button>
 </div>
 
 <input type="search" id="search" placeholder="🔍 상호/주소/전화번호/메모 검색">
@@ -82,7 +56,6 @@
 <div class="sort-row">
   <button data-s="origin" class="active">원본순</button>
   <button data-s="addr">주소순</button>
-  <button data-s="near">가까운순</button>
 </div>
 
 <div class="filters">
@@ -94,9 +67,6 @@
 </div>
 
 <div class="stats" id="stats"></div>
-<div id="geoProgress" class="geo-progress"></div>
-
-<div id="map"></div>
 <div id="list"></div>
 
 <script>
@@ -104,23 +74,10 @@ let data = [];
 let filter = 'all';
 let sortMode = 'origin';
 let keyword = '';
-let view = 'list';
-let myPos = null;
-let map = null, markers = [];
 
-// 저장 복구
 const saved = localStorage.getItem('salesData');
 if (saved) { data = JSON.parse(saved); }
-const savedKey = localStorage.getItem('kakaoKey');
-if (savedKey) { document.getElementById('kakaoKey').value = savedKey; document.getElementById('setupBox').style.display='none'; }
 render();
-
-function saveKey() {
-  const k = document.getElementById('kakaoKey').value.trim();
-  localStorage.setItem('kakaoKey', k);
-  alert('저장되었습니다.');
-  document.getElementById('setupBox').style.display='none';
-}
 
 document.getElementById('fileInput').addEventListener('change', e => {
   const file = e.target.files[0];
@@ -133,7 +90,7 @@ document.getElementById('fileInput').addEventListener('change', e => {
     const oldMap = {};
     data.forEach(d => oldMap[d.phone] = d);
     data = rows.map((r, idx) => {
-      const name = r['상호'] || r['기관명'] || r['이름'] || r['업체명'] || '';
+      const name = r['상호'] || r['상호명'] || r['이름'] || r['업체명'] || '';
       const phone = String(r['전화'] || r['전화번호'] || r['연락처'] || '').replace(/\s/g,'');
       const addr = r['주소'] || r['주소지'] || '';
       const memo = r['메모'] || r['비고'] || '';
@@ -142,8 +99,7 @@ document.getElementById('fileInput').addEventListener('change', e => {
         origIdx: idx, name, phone, addr,
         memo: old.memo !== undefined ? old.memo : memo,
         call: !!old.call, sales: !!old.sales, done: !!old.done,
-        callDate: old.callDate || '', salesDate: old.salesDate || '', doneDate: old.doneDate || '',
-        lat: old.lat || null, lng: old.lng || null
+        callDate: old.callDate || '', salesDate: old.salesDate || '', doneDate: old.doneDate || ''
       };
     });
     save(); render();
@@ -164,14 +120,10 @@ document.querySelectorAll('.filters button').forEach(b => {
 });
 
 document.querySelectorAll('.sort-row button').forEach(b => {
-  b.addEventListener('click', async () => {
+  b.addEventListener('click', () => {
     document.querySelectorAll('.sort-row button').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
-    sortMode = b.dataset.s;
-    if (sortMode === 'near') {
-      await getMyPos();
-    }
-    render();
+    sortMode = b.dataset.s; render();
   });
 });
 
@@ -203,14 +155,22 @@ function copyAddr(text, ev) {
   navigator.clipboard.writeText(text).then(() => alert('주소 복사됨:\n' + text));
 }
 
+function resetChecks() {
+  if (!confirm('모든 체크와 날짜를 초기화할까요? (메모는 유지)')) return;
+  data.forEach(d => {
+    d.call = d.sales = d.done = false;
+    d.callDate = d.salesDate = d.doneDate = '';
+  });
+  save(); render();
+}
+
 function exportExcel() {
   if (!data.length) { alert('내보낼 데이터가 없습니다.'); return; }
   const out = data.map(d => ({
     상호: d.name, 전화: d.phone, 주소: d.addr, 메모: d.memo,
     전화함: d.call?'O':'', 전화일자: d.callDate,
     영업함: d.sales?'O':'', 영업일자: d.salesDate,
-    가입완료: d.done?'O':'', 가입일자: d.doneDate,
-    위도: d.lat||'', 경도: d.lng||''
+    가입완료: d.done?'O':'', 가입일자: d.doneDate
   }));
   const ws = XLSX.utils.json_to_sheet(out);
   const wb = XLSX.utils.book_new();
@@ -218,119 +178,7 @@ function exportExcel() {
   XLSX.writeFile(wb, `영업현황_${today()}.xlsx`);
 }
 
-// 지오코딩
-async function geocodeOne(addr) {
-  const key = localStorage.getItem('kakaoKey');
-  if (!key) throw new Error('VWorld API 키가 없습니다.');
-  
-  let query = addr.trim();
-  if (!/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)/.test(query)) {
-    query = '서울특별시 ' + query;
-  }
-  query = query.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
-  
-  const apiUrl = 'https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&format=json&key=' + key + '&address=' + encodeURIComponent(query);
-  const proxy = 'https://corsproxy.io/?';
-  
-  // 1차: 도로명주소
-  let res = await fetch(proxy + encodeURIComponent(apiUrl + '&type=road'));
-  let j = await res.json();
-  
-  // 2차: 실패 시 지번주소
-  if (!j.response || j.response.status !== 'OK') {
-    res = await fetch(proxy + encodeURIComponent(apiUrl + '&type=parcel'));
-    j = await res.json();
-  }
-  
-  if (j.response && j.response.status === 'OK') {
-    const p = j.response.result.point;
-    return { lat: parseFloat(p.y), lng: parseFloat(p.x) };
-  }
-  return null;
-}
-
-
-
-async function geocodeAll() {
-  const targets = data.filter(d => d.addr && (!d.lat || !d.lng));
-  if (!targets.length) { alert('변환할 주소가 없습니다. (모두 이미 좌표 있음)'); return; }
-  if (!confirm(`${targets.length}개 주소를 좌표로 변환합니다. 계속?`)) return;
-  const prog = document.getElementById('geoProgress');
-  let done = 0, fail = 0;
-  for (const d of targets) {
-    try {
-      const r = await geocodeOne(d.addr);
-      if (r) { d.lat = r.lat; d.lng = r.lng; } else { fail++; }
-    } catch(e) { fail++; console.error(e); }
-    done++;
-    prog.textContent = `좌표 변환 중... ${done}/${targets.length} (실패 ${fail})`;
-    if (done % 5 === 0) save();
-    await new Promise(r => setTimeout(r, 200)); // API 부하 방지
-  }
-  save();
-  prog.textContent = `완료: ${done-fail}건 성공, ${fail}건 실패`;
-  render();
-  setTimeout(()=> prog.textContent = '', 5000);
-}
-
-async function getMyPos() {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) { alert('위치 서비스 미지원'); resolve(null); return; }
-    navigator.geolocation.getCurrentPosition(
-      p => { myPos = { lat: p.coords.latitude, lng: p.coords.longitude }; resolve(myPos); },
-      err => { alert('위치 권한이 필요합니다.'); resolve(null); },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  });
-}
-
-function distance(a, b) {
-  const R = 6371, toRad = x => x*Math.PI/180;
-  const dLat = toRad(b.lat-a.lat), dLng = toRad(b.lng-a.lng);
-  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
-}
-
-function setView(v) {
-  view = v;
-  document.getElementById('btnList').classList.toggle('active', v==='list');
-  document.getElementById('btnMap').classList.toggle('active', v==='map');
-  document.getElementById('map').classList.toggle('active', v==='map');
-  document.getElementById('list').style.display = v==='list' ? 'block' : 'none';
-  if (v==='map') renderMap();
-}
-
-function renderMap() {
-  const mapEl = document.getElementById('map');
-  const pts = data.filter(d => d.lat && d.lng);
-  if (!pts.length) { mapEl.innerHTML = '<div style="padding:20px;text-align:center;">좌표 데이터가 없습니다.<br>📍 좌표변환 버튼을 먼저 눌러주세요.</div>'; return; }
-  mapEl.innerHTML = '';
-  if (map) { map.remove(); map = null; }
-  map = L.map('map').setView([pts[0].lat, pts[0].lng], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap'
-  }).addTo(map);
-  const bounds = [];
-  pts.forEach(d => {
-    const color = d.done ? '#22c55e' : (d.sales ? '#3b82f6' : (d.call ? '#f59e0b' : '#ef4444'));
-    const marker = L.circleMarker([d.lat, d.lng], {
-      radius: 8, color: '#fff', weight: 2, fillColor: color, fillOpacity: 0.9
-    }).addTo(map);
-    marker.bindPopup(`
-      <b>${d.name}</b><br>
-      📞 ${d.phone}<br>
-      📍 ${d.addr}<br>
-      <a href="tel:${d.phone}">전화걸기</a>
-    `);
-    bounds.push([d.lat, d.lng]);
-  });
-  if (bounds.length > 1) map.fitBounds(bounds, { padding: [30,30] });
-}
-
 function render() {
-  document.getElementById('list').style.display = view==='list' ? 'block' : 'none';
-  document.getElementById('map').classList.toggle('active', view==='map');
-
   let filtered = data.filter(d => {
     if (keyword && !(d.name+d.addr+d.phone+d.memo).toLowerCase().includes(keyword)) return false;
     if (filter === 'none') return !d.call && !d.sales && !d.done;
@@ -340,25 +188,16 @@ function render() {
     return true;
   });
 
-  // 정렬
   if (sortMode === 'addr') {
     filtered.sort((a,b) => (a.addr||'').localeCompare(b.addr||'','ko'));
-  } else if (sortMode === 'near' && myPos) {
-    filtered.forEach(d => {
-      d._dist = (d.lat && d.lng) ? distance(myPos, {lat:d.lat,lng:d.lng}) : Infinity;
-    });
-    filtered.sort((a,b) => a._dist - b._dist);
   } else {
     filtered.sort((a,b) => (a.origIdx||0) - (b.origIdx||0));
   }
 
   const total = data.length;
   const doneCount = data.filter(d => d.done).length;
-  const geoCount = data.filter(d => d.lat && d.lng).length;
   document.getElementById('stats').textContent =
-    `전체 ${total} · 표시 ${filtered.length} · 완료 ${doneCount} · 좌표 ${geoCount}`;
-
-  if (view === 'map') { renderMap(); return; }
+    `전체 ${total} · 표시 ${filtered.length} · 완료 ${doneCount}`;
 
   document.getElementById('list').innerHTML = filtered.map(d => {
     const i = data.indexOf(d);
@@ -367,8 +206,6 @@ function render() {
     if (d.call) badges.push('<span class="badge on-call">전화</span>');
     if (d.sales) badges.push('<span class="badge on-sales">영업</span>');
     if (d.done) badges.push('<span class="badge on-done">완료</span>');
-    const distStr = (sortMode==='near' && d._dist!==undefined && d._dist!==Infinity)
-      ? `<div class="dist">📏 약 ${d._dist.toFixed(2)} km</div>` : '';
     return `
     <div class="card ${d.done ? 'done' : ''} ${d._open?'open':''}">
       <div class="card-head" onclick="toggleCard(${i})">
@@ -377,7 +214,6 @@ function render() {
           <div class="badges">${badges.join('')}</div>
         </div>
         <div class="info">📍 ${d.addr || '-'}</div>
-        ${distStr}
       </div>
       <div class="expand">
         <div class="info" style="margin-bottom:6px;">📞 ${d.phone || '-'}</div>
@@ -385,7 +221,7 @@ function render() {
         <div class="btns">
           <a class="btn-call" href="tel:${d.phone}">📞 전화</a>
           <button class="btn-copy" onclick="copyAddr('${esc(d.addr)}', event)">📋 주소</button>
-          <a class="btn-map" href="https://map.kakao.com/link/to/${encodeURIComponent(d.name||d.addr)},${d.lat||''},${d.lng||''}" target="_blank">🗺️ 길찾기</a>
+          <a class="btn-map" href="https://map.kakao.com/link/search/${encodeURIComponent(d.addr||d.name)}" target="_blank">🗺️ 지도</a>
         </div>
         <div class="status-item">
           <label><input type="checkbox" ${d.call?'checked':''} onclick="toggle(${i},'call','callDate',event)"> 전화</label>
